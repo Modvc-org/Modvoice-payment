@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApps, deleteApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
 import { encryptApiKey } from "../../modvc-main/utils/encryption";
@@ -12,13 +12,14 @@ const FIREBASE_CONFIG = {
 };
 
 async function getAuthenticatedFirestore() {
-  const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[0];
+  const appName = `worker-${Date.now()}-${Math.random()}`;
+  const app = initializeApp(FIREBASE_CONFIG, appName);
   const auth = getAuth(app);
-  const email = import.meta.env.VITE_BOT_WRITER_EMAIL || "";
-  const password = import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
+  const email = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_EMAIL) || import.meta.env.VITE_BOT_WRITER_EMAIL || "";
+  const password = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_PASSWORD) || import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
   
   await signInWithEmailAndPassword(auth, email, password);
-  return getFirestore(app);
+  return { db: getFirestore(app), app };
 }
 
 export const Route = createFileRoute("/api/stripe-keys")({
@@ -36,7 +37,15 @@ export const Route = createFileRoute("/api/stripe-keys")({
             });
           }
 
-          const db = await getAuthenticatedFirestore();
+          let db: any;
+          let app: any;
+          try {
+            const authResult = await getAuthenticatedFirestore();
+            db = authResult.db;
+            app = authResult.app;
+          } catch (err) {
+            return new Response(JSON.stringify({ success: false, error: "Failed to connect to database" }), { status: 500 });
+          }
           const serverRef = doc(db, "servers", serverId);
           const serverSnap = await getDoc(serverRef);
 
@@ -66,6 +75,8 @@ export const Route = createFileRoute("/api/stripe-keys")({
              await updateDoc(serverRef, updates);
           }
 
+          await deleteApp(app);
+
           return new Response(JSON.stringify({ success: true }), {
             status: 200,
             headers: { "Content-Type": "application/json" }
@@ -73,6 +84,8 @@ export const Route = createFileRoute("/api/stripe-keys")({
 
         } catch (error: any) {
           console.error("Stripe Keys API Error:", error);
+          // @ts-ignore
+          if (typeof app !== 'undefined') await deleteApp(app).catch(()=>null);
           return new Response(JSON.stringify({ success: false, error: "Internal Server Error: " + error.message }), {
             status: 500,
             headers: { "Content-Type": "application/json" }

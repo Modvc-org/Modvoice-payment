@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import Stripe from "stripe";
-import { getApps, initializeApp } from "firebase/app";
+import { getApps, initializeApp, deleteApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { decryptApiKey } from "../../modvc-main/utils/encryption";
@@ -13,13 +13,14 @@ const FIREBASE_CONFIG = {
 };
 
 async function getAuthenticatedFirestore() {
-  const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[0];
+  const appName = `worker-${Date.now()}-${Math.random()}`;
+  const app = initializeApp(FIREBASE_CONFIG, appName);
   const auth = getAuth(app);
-  const email = import.meta.env.VITE_BOT_WRITER_EMAIL || "";
-  const password = import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
+  const email = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_EMAIL) || import.meta.env.VITE_BOT_WRITER_EMAIL || "";
+  const password = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_PASSWORD) || import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
   
   await signInWithEmailAndPassword(auth, email, password);
-  return getFirestore(app);
+  return { db: getFirestore(app), app };
 }
 
 export const Route = createFileRoute("/api/stripe-checkout")({
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/api/stripe-checkout")({
             });
           }
 
-          const db = await getAuthenticatedFirestore();
+          const { db, app } = await getAuthenticatedFirestore();
           
           // Get Server to find Stripe Keys
           const serverDoc = await getDoc(doc(db, "servers", serverId));
@@ -112,12 +113,15 @@ export const Route = createFileRoute("/api/stripe-checkout")({
             }
           });
 
+          await deleteApp(app);
           return new Response(JSON.stringify({ success: true, url: session.url }), {
             status: 200,
             headers: { "Content-Type": "application/json" }
           });
         } catch (error: any) {
           console.error("Stripe Checkout Error:", error);
+          // @ts-ignore
+          if (typeof app !== 'undefined') await deleteApp(app).catch(()=>null);
           return new Response(JSON.stringify({ success: false, error: error.message }), {
             status: 500,
             headers: { "Content-Type": "application/json" }

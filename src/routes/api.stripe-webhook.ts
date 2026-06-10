@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import Stripe from "stripe";
-import { getApps, initializeApp } from "firebase/app";
+import { getApps, initializeApp, deleteApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, increment, collection } from "firebase/firestore";
 import { decryptApiKey } from "../../modvc-main/utils/encryption";
@@ -13,13 +13,14 @@ const FIREBASE_CONFIG = {
 };
 
 async function getAuthenticatedFirestore() {
-  const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[0];
+  const appName = `worker-${Date.now()}-${Math.random()}`;
+  const app = initializeApp(FIREBASE_CONFIG, appName);
   const auth = getAuth(app);
-  const email = import.meta.env.VITE_BOT_WRITER_EMAIL || "";
-  const password = import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
+  const email = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_EMAIL) || import.meta.env.VITE_BOT_WRITER_EMAIL || "";
+  const password = (typeof process !== 'undefined' && process.env.VITE_BOT_WRITER_PASSWORD) || import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
   
   await signInWithEmailAndPassword(auth, email, password);
-  return getFirestore(app);
+  return { db: getFirestore(app), app };
 }
 
 export const Route = createFileRoute("/api/stripe-webhook")({
@@ -45,7 +46,15 @@ export const Route = createFileRoute("/api/stripe-webhook")({
 
           const { serverId, productId, userId, type, quantity } = session.metadata;
 
-          const db = await getAuthenticatedFirestore();
+          let db: any;
+          let app: any;
+          try {
+             const authResult = await getAuthenticatedFirestore();
+             db = authResult.db;
+             app = authResult.app;
+          } catch (err) {
+             return new Response("Database error", { status: 500 });
+          }
           
           // Get Server to find Stripe Webhook Secret
           const serverDoc = await getDoc(doc(db, "servers", serverId));
@@ -60,7 +69,13 @@ export const Route = createFileRoute("/api/stripe-webhook")({
           const stripeWebhookSecret = encryptedWebhook ? decryptApiKey(encryptedWebhook) : null;
 
           if (!stripeSecretKey || !stripeWebhookSecret) {
-            return new Response("Server Stripe config missing", { status: 400 });
+            return new Response(JSON.stringify({
+              error: "Server Stripe config missing", 
+              hasEncryptedWebhook: !!encryptedWebhook,
+              decryptedWebhookLength: stripeWebhookSecret?.length,
+              processAvailable: typeof process !== 'undefined',
+              hasEnvKey: typeof process !== 'undefined' ? !!process.env.GLOBAL_ENCRYPTION_KEY : false
+            }), { status: 400 });
           }
 
           const stripe = new Stripe(stripeSecretKey, {
@@ -69,10 +84,15 @@ export const Route = createFileRoute("/api/stripe-webhook")({
 
           let event: Stripe.Event;
           try {
-            event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret);
+            event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret);
           } catch (err: any) {
             console.error(`⚠️  Webhook signature verification failed.`, err.message);
-            return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+            return new Response(JSON.stringify({
+              error: `Webhook Error: ${err.message}`,
+              webhookSecretLength: stripeWebhookSecret.length,
+              signaturePrefix: signature.substring(0, 10),
+              bodyLength: body.length
+            }), { status: 400 });
           }
 
           if (event.type === "checkout.session.completed") {
@@ -134,10 +154,13 @@ export const Route = createFileRoute("/api/stripe-webhook")({
              }
           }
 
+          await deleteApp(app);
           return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
 
         } catch (error: any) {
           console.error("Webhook Handler Error:", error);
+          // @ts-ignore
+          if (typeof app !== 'undefined') await deleteApp(app).catch(()=>null);
           return new Response("Internal Server Error", { status: 500 });
         }
       }
