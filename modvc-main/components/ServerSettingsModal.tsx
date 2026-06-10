@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Layout, Users, Trash2, Loader2, Upload, ImageIcon, Shield, Crown, UserMinus, Hammer, Check, ShieldAlert, Link as LinkIcon, Lock, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Layout, Users, Trash2, Loader2, Upload, ImageIcon, Shield, Crown, UserMinus, Hammer, Check, ShieldAlert, Link as LinkIcon, Lock, Plus, ChevronDown, ChevronRight, Github } from 'lucide-react';
 import { Button } from './Button';
 import { Server, ServerMember, MemberRole, Role, Permission, PERMISSION_INFO, hasPermission } from '../types';
 import { serverService } from '../services/serverStore';
@@ -555,6 +555,14 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                               <div className="text-xs text-green-400/80">API keys are instantly encrypted on the server edge. They are mathematically impossible to extract via client-side XSS.</div>
                           </div>
                       </div>
+
+                      <a href="https://github.com/Modvc-org/Modvoice-payment" target="_blank" rel="noopener noreferrer" className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md flex items-center gap-3 hover:bg-blue-500/20 transition-colors block cursor-pointer">
+                          <Github className="w-5 h-5 text-blue-400 shrink-0" />
+                          <div>
+                              <div className="text-sm font-bold text-blue-400">100% Open Source Architecture</div>
+                              <div className="text-xs text-blue-400/80">Our payment integration is fully open-sourced for transparency. Click here to audit the GitHub repository.</div>
+                          </div>
+                      </a>
 
                       <div className="pt-6 flex items-center gap-4 border-t border-mod-border mt-6">
                           <Button onClick={saveMonetization} loading={isSaving}>
