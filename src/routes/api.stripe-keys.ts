@@ -14,8 +14,8 @@ const FIREBASE_CONFIG = {
 async function getAuthenticatedFirestore() {
   const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[0];
   const auth = getAuth(app);
-  const email = import.meta.env.VITE_BOT_WRITER_EMAIL || "api_bot_writer@modvc.org";
-  const password = import.meta.env.VITE_BOT_WRITER_PASSWORD || "MODVCApiBotWriterPassword2026!";
+  const email = import.meta.env.VITE_BOT_WRITER_EMAIL || "";
+  const password = import.meta.env.VITE_BOT_WRITER_PASSWORD || "";
   
   await signInWithEmailAndPassword(auth, email, password);
   return getFirestore(app);
