@@ -137,16 +137,27 @@ export const Route = createFileRoute("/api/stripe-webhook")({
                     createdAt: Date.now()
                  });
 
-                 // 2. Add Role if product has roleId
+                 // 2. Add Role or Channel Access
                  const productDoc = await getDoc(doc(db, "products", productId));
                  if (productDoc.exists()) {
                      const productData = productDoc.data();
+                     
                      if (productData.roleId) {
                          const memberRef = doc(db, `servers/${serverId}/members/${userId}`);
                          const memberSnap = await getDoc(memberRef);
                          if (memberSnap.exists()) {
                              await updateDoc(memberRef, {
                                  roleIds: arrayUnion(productData.roleId)
+                             });
+                         }
+                     }
+                     
+                     if (productData.accessChannelId) {
+                         const channelRef = doc(db, `servers/${serverId}/channels/${productData.accessChannelId}`);
+                         const channelSnap = await getDoc(channelRef);
+                         if (channelSnap.exists()) {
+                             await updateDoc(channelRef, {
+                                 [`permissionOverrides.${userId}`]: { view_channel: true, send_messages: false, add_reactions: true }
                              });
                          }
                      }
